@@ -2,25 +2,27 @@
 """
 Created on Thu Jul 27 07:55:36 2017
 
+This code calculates the backazimuth of the seismic for each frequency that is considered
+Rayleigh wave glaciohydraulic tremor based on the work of Park et. al 1987. This code also 
+creates rose diagrams of the probability density of backazimuths. 
+
+### SCRIPTS NEEDED TO RUN PRIOR TO RUNNING THIS SCRIPT: GHT_Frequencies_Plotting.py and FFT_loop.py 
+
 @author: vore5101
 """
-# Packages needed 
+#%% Packages needed 
 import numpy as np
 from math import pi
 import matplotlib.pyplot as plt
 from numpy.linalg import svd
-from obspy.core import UTCDateTime
 import cmath
-from math import cos
 import pickle
 import numpy.ma as ma
 import matplotlib.gridspec as gridspec
 import heapq
 import datetime
-from scipy.signal import argrelextrema as relex
-import os.path
 
-#%% 
+#%% function for grouping consecutive lists of numbers 
 def group_consecutives(vals, step=1):
     """Return list of consecutive lists of numbers from vals (number list)."""
     run = []
@@ -34,6 +36,7 @@ def group_consecutives(vals, step=1):
             result.append(run)
         expect = v + step
     return result
+    
 #%% User defined Variables
 Station='RTBD'                  # Seismic Station Name
 year=2016                       # Year of data
@@ -107,7 +110,7 @@ for day in day_range:
     # Split Window Loop into groups (size of groups defined by user). This allows for averaging
     Split=np.split(WindowLoop, len(WindowLoop)/float(averaging_number))
  
-#%%    
+#%% Averaging fft matiricies together to reduce the influence of transient events  
     # Initiate Loop count
     LoopNumber=0
     
@@ -133,7 +136,7 @@ for day in day_range:
             stacked_real=np.empty((3,3,len(SplitLoop)))
             stacked_imag=np.empty((3,3,len(SplitLoop)))
  
-#%% Averaging fft matiricies together to reduce the influence of transient events           
+         
             #for each array in a group
             for i in SplitLoop: 
                 
@@ -232,7 +235,7 @@ for day in day_range:
         
         
             
-# %% Plotting backazimuth in rose diagram
+# %% Plotting backazimuth in rose diagram (like figure 4)
             
 #    WidthMask=ma.array(Width,mask=np.isnan(Width))
 #    TremorWidthMask=ma.array(TremorWidth,mask=np.isnan(TremorWidth))
