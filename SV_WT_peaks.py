@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 Created on Wed Nov 15 08:01:54 2017
-
+This scripts finds the frequencies of a seismic signal that contains peaks in the ratio between 
+the first and second singular values as well as the distribution of wave types (Rayleigh, body, and mixed)
+within each frequency band for a given day. 
 @author: vore5101
 """
 #%% Packages Needed  
