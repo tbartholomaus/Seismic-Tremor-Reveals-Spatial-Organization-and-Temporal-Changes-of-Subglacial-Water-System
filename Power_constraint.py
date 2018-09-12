@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Created on Thu Nov 09 11:23:26 2017
-Used to define the power threshold for each seismic station
+Used to define the power threshold for each seismic station by defining the lower limit (LL_constraint) and the
+power constraint that defines the threshold value to determine what is considered a peak in seismic power. 
 @author: vore5101
 """
 #%% Packages
