@@ -2,7 +2,7 @@
 """
 Created on Thu Feb 25 18:20:16 2016
 
-@author: tbartholomaus
+@author: tbartholomaus ** This script was created by Timothy Bartholomaus**
 
 A few custom functions that make it easier to work with obspy UTCDateTimes
 """
