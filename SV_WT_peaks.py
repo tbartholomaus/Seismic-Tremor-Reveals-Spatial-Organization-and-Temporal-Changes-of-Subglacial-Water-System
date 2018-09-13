@@ -111,7 +111,6 @@ for day in day_range:
             # polarization vector defined along with each component 
             Z=V[:,0]
             Z=np.asarray(Z); Z0=Z[0];Z1=Z[1];Z2=Z[2]
-            z_2=Z[2].real; z_1=Z[1].real
             
             XY=Z[1]**2+Z[2]**2
             
