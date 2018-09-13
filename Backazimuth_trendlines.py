@@ -8,6 +8,8 @@ measurements. The median backazimuthis found for a given band of Glaciohydraulic
 tremor on a given day for the all days of data. A trendline is then placed 
 through the data and R^2 is calculated.
 
+This code was not used to make any figures in the paper but was used for inital analysis of data set 
+
 
 """
 #%% Packages Needed 
