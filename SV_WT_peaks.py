@@ -120,7 +120,7 @@ for day in day_range:
             [r_y,phi_y]=cmath.polar(Z2)
             [r_xy,phi_xy]=cmath.polar(XY)
 
-#%% calculate the backazimuth of the seismic signal for each group    
+#%% calculate the wave polarization of the seismic signal for each group    
 
             # conditions for determining the the horizontal angle of the seismic signal 
                 # see park et al. (1987)        
@@ -135,7 +135,7 @@ for day in day_range:
             #calculate the horizontal angle
             Phi_H=-0.5*(phi_xy)+(l*pi)/2   
             
-            #calculate backazimuth and assign to appropriate quadrant 
+            #calculate wave polarization  and assign to appropriate sign  
             Phi_VH=(Phi_H-phi_z)*(180/pi)
             if Phi_VH > 90:
                 Phi_VH=Phi_VH-180
