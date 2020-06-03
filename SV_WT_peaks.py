@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
 """
+For each day, for each frequency
+
+Revisited by Tim Bartholomaus on June 1, 2020
+
+
 Created on Wed Nov 15 08:01:54 2017
 This scripts finds the frequencies of a seismic signal that contains peaks in the ratio between 
 the first and second singular values as well as the distribution of wave types (Rayleigh, body, and mixed)
@@ -15,6 +20,9 @@ import cmath
 from math import cos
 import pickle
 import datetime
+from pathlib import Path
+import configparser
+
 
 #%% function that smooths the data set (y) between given number of points (box_pts)
 def smooth(y, box_pts):
@@ -23,33 +31,54 @@ def smooth(y, box_pts):
     return y_smooth 
     
 #%% User defined variables
-Station='GIW3'                  # Station Name
-year=2016                       # year of data collection
-month=7                         # month of interest within data set
-day_range=np.arange(1,32,1)     # day range of interest within data set 
-hr_s=00                         # starting hour of data of interest 
-min_s=00                        # starting minute of data of interest
-sec_s= 00                       # starting second of data of interest
-SV_constraint=2.5               # Singular value threshold value
-WT_constraint=39                # percent of wavetype threshold value
-WT_Other_constraint=96          # percent of mixed wavetype threshold value
-Freqmin=1.5                     # minimum frequency of interest [Hz]
-Freqmax=10                      # maximum frequency of interest [Hz]
+analysis_path = Path.cwd()
+
+#%% READ FROM THE PAR FILE
+config = configparser.ConfigParser()
+config.read('polarization.par')
+
+Station = config['DEFAULT']['station']
+
+year = int(config['DEFAULT']['year'])
+start_month = int(config['DEFAULT']['start_month'])
+end_month = int(config['DEFAULT']['end_month'])
+start_day = int(config['DEFAULT']['start_day'])
+end_day = int(config['DEFAULT']['end_day'])
+
+SV_constraint = float(config['DEFAULT']['SV_constraint']) # Singular value threshold value
+WT_constraint = float(config['DEFAULT']['WT_constraint']) # percent of wavetype threshold value
+WT_Other_constraint = float(config['DEFAULT']['WT_Other_constraint']) # percent of mixed wavetype threshold value
+
+Freqmin = float(config['DEFAULT']['Freqmin']) # Minimum frequancy of interest {Hz}
+Freqmax = float(config['DEFAULT']['Freqmax']) # Max frequency of interest [Hz]
+
+start_day = datetime.datetime(year, start_month, start_day, 0,0,0)
+end_day = datetime.datetime(year, end_month, end_day, 0,0,0)
+
+dates = np.arange(start_day, end_day, datetime.timedelta(days=1))
+
+#%%
+if not Path.exists(analysis_path / 'Constraints' / Station):
+    Path.mkdir(analysis_path / 'Constraints' / Station)
+    Path.mkdir(analysis_path / 'Constraints' / Station / 'SV')
+    Path.mkdir(analysis_path / 'Constraints' / Station / 'Rayleigh')
+    Path.mkdir(analysis_path / 'Constraints' / Station / '020')
+    Path.mkdir(analysis_path / 'Constraints' / Station / 'Other')
 
 #%% finds the singular value and wave type peaks for each day in the seismic record
-for day in day_range:
+for day in dates:
     
-    dt=datetime.datetime(year,month,day, hr_s,min_s,sec_s) # date into datetime format
-    dayofyear=int(dt.strftime('%j')) # determines the day of year
-    
+    temp = (day - np.datetime64(str(year-1) + '-12-31')).astype('timedelta64[D]')                                            # defines the day of year
+    doy = int( temp / np.timedelta64(1, 'D') )
+
     # opens FFT results for gievn day (From FFT_loop.py)
     try:
-        with open('E:/FFT_results/%s/FFT.%s.pickle'%(Station,dayofyear),'rb') as f:  
+        with open(str(analysis_path / 'FFT_results') + '/%s/FFT.%s.pickle'%(Station,doy),'rb') as f:  
                 FFT_stack_real,FFT_stack_imag,WindowLoop,Frequency,averaging_number= pickle.load(f)    
     except IOError:
         continue
     
-    # find inidice of the min and max frequency 
+    # find inidices of the min and max frequency 
     FreqMin_location=np.where(np.array(Frequency)>Freqmin)[0]
     FreqMax_location=np.where(np.array(Frequency)>Freqmax)[0] 
     
@@ -103,16 +132,16 @@ for day in day_range:
             U,S,V=svd(StackMean,compute_uv=True)    
             
             # Get transpose of V
-            V=np.conj(V.T)
+            V=np.conj(V.T) # Source of the orientations of polarization (3x3 complex)
             
             # record singular values that are calculated by singular value decomposition 
-            s0.append(S[0]);s1.append(S[1]);s2.append(S[2])
+            s0.append(S[0]);s1.append(S[1]);s2.append(S[2]) # How strongly is polarization in these different directions?
         
             # polarization vector defined along with each component 
             Z=V[:,0]
-            Z=np.asarray(Z); Z0=Z[0];Z1=Z[1];Z2=Z[2]
+            Z=np.asarray(Z); Z0=Z[0];Z1=Z[1];Z2=Z[2] # Magnitude and phase in each of three directions of the first eigenvector
             
-            XY=Z[1]**2+Z[2]**2
+            XY=Z1**2 + Z2**2
             
             # change all components of polarization vector into polar coordianates
             [r_z,phi_z]=cmath.polar(Z0)
@@ -132,7 +161,7 @@ for day in day_range:
             a_H_max=np.where(np.asarray(a_H)==max(a_H))[0]
             l=integer[a_H_max[0]]  
             
-            #calculate the horizontal angle
+            #calculate the horizontal phase angle
             Phi_H=-0.5*(phi_xy)+(l*pi)/2   
             
             #calculate wave polarization  and assign to appropriate sign  
@@ -203,21 +232,25 @@ for day in day_range:
     OPeak_freq=np.take(freq,OPeak_index)
 
 #%% Save results
-    
+
     # Singular Value
-    with open('E:/Research/Constraints/%s/SV/SVP.%s.pickle'%(Station,dayofyear), 'wb') as f:  # Python 3: open(..., 'wb')
+    with open( str(analysis_path / 'Constraints' / Station) + 
+              '/SV/SVP.'+str(doy)+'.pickle', 'wb') as f:  # Python 3: open(..., 'wb')
         pickle.dump([freq, SV, SVPeak_values, SVPeak_freq],f)
 
     # Rayleigh wave
-    with open('E:/Research/Constraints/%s/Rayleigh/RP.%s.pickle'%(Station,dayofyear), 'wb') as f:  # Python 3: open(..., 'wb')
+    with open( str(analysis_path / 'Constraints' / Station) + 
+              '/Rayleigh/RP.%s.pickle'%(doy), 'wb') as f:  # Python 3: open(..., 'wb')
         pickle.dump([freq, PhiRayleigh, RPeak_values, RPeak_freq],f)
     
     # Body wave 
-    with open('E:/Research/Constraints/%s/020/ZP.%s.pickle'%(Station,dayofyear), 'wb') as f:  # Python 3: open(..., 'wb')
+    with open(str(analysis_path / 'Constraints' / Station) + 
+              '/020/ZP.%s.pickle'%(doy), 'wb') as f:  # Python 3: open(..., 'wb')
         pickle.dump([freq, Phi020, BPeak_values, BPeak_freq],f)
     
     # Mixed wave
-    with open('E:/Research/Constraints/%s/Other/OP.%s.pickle'%(Station,dayofyear), 'wb') as f:  # Python 3: open(..., 'wb')
+    with open(str(analysis_path / 'Constraints' / Station) + 
+              '/Other/OP.%s.pickle'%(doy), 'wb') as f:  # Python 3: open(..., 'wb')
         pickle.dump([freq, PhiOther , OPeak_values, OPeak_freq],f)
         
 #%% Plotting
@@ -225,26 +258,20 @@ for day in day_range:
     plt.scatter(SVPeak_freq,SVPeak_values,color='g')
     plt.xlabel('Frequency [Hz]')
     plt.ylabel('S0/S1')
-    plt.title('%s Day %s: Peaks in Singular values'%(Station, dayofyear))
-        
+    plt.title('%s Day %s: Peaks in Singular values'%(Station, doy))
+    
+    # What percentage are each of these different wave types?
+    plt.figure()
     plt.plot(freq,PhiRayleigh)
     plt.scatter(RPeak_freq,RPeak_values,color='g')
     
+    plt.figure()
     plt.plot(freq,Phi020)
     plt.scatter(BPeak_freq,BPeak_values,color='g')
         
+    plt.figure()
     plt.plot(freq,PhiOther)
     plt.scatter(OPeak_freq,OPeak_values,color='g')
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         
         
         

@@ -9,6 +9,9 @@ To be used in tandem with the PolarPlot_GHT_freqs.py. This method is adapted fro
 """
 
 #%% Packages needed
+
+from pathlib import Path
+
 import numpy as np
 from numpy.fft import fft
 from numpy.fft import fftfreq 
@@ -17,44 +20,74 @@ from obspy.core import UTCDateTime
 from spectrum import*
 import pickle
 import datetime
+import configparser
+
+
+#%% READ FROM THE PAR FILE
+config = configparser.ConfigParser()
+config.read('polarization.par')
+
+Station = config['DEFAULT']['station']
+Network = config['DEFAULT']['network']
+
+year = int(config['DEFAULT']['year'])
+start_month = int(config['DEFAULT']['start_month'])
+end_month = int(config['DEFAULT']['end_month'])
+start_day = int(config['DEFAULT']['start_day'])
+end_day = int(config['DEFAULT']['end_day'])
+
+averaging_number = int(config['DEFAULT']['averaging_number']) # number of spectral covariance matricies that are averaged together
+
+Freqmin = float(config['DEFAULT']['Freqmin']) # Minimum frequancy of interest {Hz}
+Freqmax = float(config['DEFAULT']['Freqmax']) # Max frequency of interest [Hz]
+
 
 #%% User defined Variables
-Station='GIW3'                                                                  # Seiemic Station Name
-year=2016                                                                       # Year data was collected
-month=7                                                                         # Month of data set
-day_range=np.arange(1,32,1)                                                     # Day range of data set
-hr_s=00                                                                         # Starting hour of data set
-min_s=00                                                                        # starting minute of data set
-sec_s= 00                                                                       # starting second of data set
-sample_rate=200.0                                                               # Sampling rate of instrumentation
+# data_path = Path('/Volumes/labdata/basic_data/seismic_data/day_vols/LEMON/')
+data_path = Path('/data/stor/basic_data/seismic_data/day_vols/LEMON/')
+analysis_path = Path.cwd()
+                                                               
 WLength=60                                                                      # Window length of sampling [sec]
 step=30                                                                         # Overlap of winows [sec]
 RunTime= 60*60*24                                                               # run time for a given dat [sec]
-averaging_number=13                                                             # number of matricies to average
-                                     
+
+start_day = datetime.datetime(year, start_month, start_day, 0,0,0)
+end_day = datetime.datetime(year, end_month, end_day, 0,0,0)
+
+dates = np.arange(start_day, end_day, datetime.timedelta(days=1))
+
+
+# %%
+Path.exists(analysis_path / 'FFT_results' / Station)
+
+if not Path.exists(analysis_path / 'FFT_results' / Station):
+    Path.mkdir(analysis_path / 'FFT_results' / Station)
+
 # %% Splits data set into defined windows
 #Vert=read('/mnt/lfs2/tbartholomaus/Seis_data/day_vols/TAKU/SV03/'+Station+'/'+Station+'.ZQ..HHZ.%s.%03d'%(year,day))
 #North=read('/mnt/lfs2/tbartholomaus/Seis_data/day_vols/TAKU/SV03/'+Station+'/'+Station+'.ZQ..HHN.%s.%03d'%(year,day))
 #East=read('/mnt/lfs2/tbartholomaus/Seis_data/day_vols/TAKU/SV03/'+Station+'/'+Station+'.ZQ..HHE.%s.%03d'%(year,day)) 
 
-for day in day_range:
+full_path = data_path / Station
+for day in dates:
 
-    dt=datetime.datetime(year,month,day, hr_s,min_s,sec_s)                      # puts date into datetime format
-    dayofyear=int(dt.strftime('%j'))                                            # defines the day of year
-    
+    # dt=datetime.datetime(year,month,day, hr_s,min_s,sec_s)                      # puts date into datetime format
+    temp = (day - np.datetime64(str(year-1) + '-12-31')).astype('timedelta64[D]')                                            # defines the day of year
+    doy = int( temp / np.timedelta64(1, 'D') )
     try:                                                                        # reads in three channels of signal if the file exists
                                                                                 # highpass filer (user change change filter limit)
-        Vert= read('%s.ZQ..HHZ.%s.%03d'%(Station,year, dayofyear)).filter('highpass', freq=0.5)
-        North= read('%s.ZQ..HHN.%s.%03d'%(Station,year,dayofyear)).filter('highpass', freq=0.5)
-        East= read('%s.ZQ..HHE.%s.%03d'%(Station,year,dayofyear)).filter('highpass', freq=0.5)
+        Vert= read(str(full_path) + '/%s.%s..HHZ.%s.%03d'%(Station, Network, year, doy)).filter('highpass', freq=0.5)
+        North= read(str(full_path) + '/%s.%s..HHN.%s.%03d'%(Station, Network, year, doy)).filter('highpass', freq=0.5)
+        East= read(str(full_path) + '/%s.%s..HHE.%s.%03d'%(Station, Network, year, doy)).filter('highpass', freq=0.5)
         Vert.merge(fill_value='latest');North.merge(fill_value='latest');East.merge(fill_value='latest')
+        sample_rate = Vert[0].stats.sampling_rate  # Hz  Sampling rate of instrumentation
         
         if len(Vert[0])< sample_rate*60*60*22:                                  # double check record is at least 22hrs in length
             continue
-        Trim_s=UTCDateTime("%s-%03dT%02d:%02d:%02d"%(year,dayofyear,hr_s,min_s,sec_s)) 
-        Trim_e=Trim_s+(RunTime)
-        Vert.detrend(type='demean');North.detrend(type='demean'); East.detrend(type='demean') # detrend data set
-        Vert.trim(Trim_s,Trim_e);North.trim(Trim_s,Trim_e);East.trim(Trim_s,Trim_e)           # trim data set
+        # Trim_s=UTCDateTime("%s-%03dT%02d:%02d:%02d"%(year,doy,hr_s,min_s,sec_s)) 
+        # Trim_e=Trim_s+(RunTime)
+        Vert.detrend(type='linear'); North.detrend(type='linear'); East.detrend(type='linear') # detrend data set
+        # Vert.trim(Trim_s,Trim_e);North.trim(Trim_s,Trim_e);East.trim(Trim_s,Trim_e)           # trim data set
     except IOError:
         continue
     
@@ -78,7 +111,7 @@ for day in day_range:
     
     WindowLoop= np.arange(StartWin,EndWin,1) 
     H=0
-    while len(WindowLoop) % averaging_number != 0:                              # cuts widnows so they are divisiable by the averaging number (user defined) 
+    while len(WindowLoop) % averaging_number != 0:                              # cuts windows so they are divisable by the averaging number (user defined) 
         WindowLoop=WindowLoop[:-1]
         H=H+1
         
@@ -124,7 +157,7 @@ for day in day_range:
     FreqIx=np.where(np.array(Frequency)>=20)[0][0]                              # used to save data less than 20Hz to save space                           
    
     # save fft results
-    with open('E:/FFT_results/%s/FFT.%s.pickle'%(Station,dayofyear), 'wb') as f:  
+    with open(str(analysis_path / 'FFT_results') + '/%s/FFT.%s.pickle'%(Station,doy), 'wb') as f:  
         pickle.dump([FFT_stack_real[0:FreqIx,:,:],FFT_stack_imag[0:FreqIx,:,:],WindowLoop,Frequency[0:FreqIx],averaging_number], f)
 
     

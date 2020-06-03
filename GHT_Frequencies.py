@@ -15,6 +15,8 @@ import datetime as dt
 from obspy.core.utcdatetime import UTCDateTime
 from UTCDateTime_funcs import UTC2dn
 from matplotlib import dates as mdates
+from pathlib import Path
+import configparser
 
 #----------------------------------------------------------------------------
 def group_consecutives(vals, step=1):
@@ -32,11 +34,31 @@ def group_consecutives(vals, step=1):
     return result
     
 #%% User Defined Variables
-Station='ETIP'
-year=2016
-day_range=np.arange(130,270,1)
-Freqmin=1.5
-Freqmax=10
+analysis_path = Path.cwd()
+
+#%% READ FROM THE PAR FILE
+config = configparser.ConfigParser()
+config.read('polarization.par')
+
+Station = config['DEFAULT']['station']
+
+year = int(config['DEFAULT']['year'])
+start_month = int(config['DEFAULT']['start_month'])
+end_month = int(config['DEFAULT']['end_month'])
+start_day = int(config['DEFAULT']['start_day'])
+end_day = int(config['DEFAULT']['end_day'])
+
+Freqmin = float(config['DEFAULT']['Freqmin']) # Minimum frequancy of interest {Hz}
+Freqmax = float(config['DEFAULT']['Freqmax']) # Max frequency of interest [Hz]
+
+
+start_day = dt.datetime(year, start_month, start_day, 0,0,0)
+end_day = dt.datetime(year, end_month, end_day, 0,0,0)
+
+dates = np.arange(start_day, end_day, dt.timedelta(days=1))
+
+
+
 
 #%% Plot Constraints
 title_font = {'fontname':'Arial', 'size':'16', 'color':'black', 'weight':'bold',
@@ -84,35 +106,41 @@ fig,ax=plt.subplots(figsize=(8,6))
 #fig.autofmt_xdate()
 
 #%% Ploting Constraints
-for dayofyear in day_range: 
+for day in dates:
     
-
-    d=dt.date(year,1,1) + dt.timedelta(dayofyear)
+    # dt=datetime.datetime(year,month,day, hr_s,min_s,sec_s) # date into datetime format
+    # doy=int(dt.strftime('%j')) # determines the day of year
+    temp = (day - np.datetime64(str(year-1) + '-12-31')).astype('timedelta64[D]')                                            # defines the day of year
+    doy = int( temp / np.timedelta64(1, 'D') )    
                                
-    UTCDay=UTCDateTime(year=year, julday=dayofyear, hour=0, minute=0)
+    UTCDay=UTCDateTime(year=year, julday=doy, hour=0, minute=0)
 
 
     # Opens all constraints that exceed the threshold value for a given day 
     try: 
         
-        #Power
-        with open('F:/Research/Constraints/%s/Power/PP.%s.pickle'%(Station,dayofyear), 'rb') as f:  # Python 3: open(..., 'rb')
-                freqsPower_cut,Power_average,PeakPower_freq,PeakPower_values = pickle.load(f)
+        # #Power
+        # with open('F:/Research/Constraints/%s/Power/PP.%s.pickle'%(Station,doy), 'rb') as f:  # Python 3: open(..., 'rb')
+        #         freqsPower_cut,Power_average,PeakPower_freq,PeakPower_values = pickle.load(f)
         
         #Singular Values
-        with open('F:/Research/Constraints/%s/SV/SVP.%s.pickle'%(Station,dayofyear), 'rb') as f:  # Python 3: open(..., 'rb')
+        with open(str(analysis_path / 'Constraints' / Station / 'SV' ) + 
+              '/SVP.'+str(doy)+'.pickle', 'rb') as f:  # Python 3: open(..., 'rb')
                 freqSV, SV, SVPeak_values, SVPeak_freq = pickle.load(f)
         
         #Rayleigh waves
-        with open('F:/Research/Constraints/%s/Rayleigh/RP.%s.pickle'%(Station,dayofyear), 'rb') as f:  # Python 3: open(..., 'rb')
+        with open(str(analysis_path / 'Constraints' / Station / 'Rayleigh') + 
+              '/RP.%s.pickle'%(doy), 'rb') as f:  # Python 3: open(..., 'rb')
                 freqR, PhiRayleigh, RPeak_values, RPeak_freq = pickle.load(f)
         
         #Body waves
-        with open('F:/Research/Constraints/%s/020/ZP.%s.pickle'%(Station,dayofyear), 'rb') as f:  # Python 3: open(..., 'rb')
+        with open(str(analysis_path / 'Constraints' / Station / '020') + 
+              '/ZP.%s.pickle'%(doy), 'rb') as f:  # Python 3: open(..., 'rb')
                 freqZ, Phi020, ZPeak_values, ZPeak_freq = pickle.load(f)     
         
         #Other waves
-        with open('F:/Research/Constraints/%s/Other/OP.%s.pickle'%(Station,dayofyear), 'rb') as f:  # Python 3: open(..., 'rb')
+        with open(str(analysis_path / 'Constraints' / Station / 'Other') + 
+              '/OP.%s.pickle'%(doy), 'rb') as f:  # Python 3: open(..., 'rb')
                 freqO, PhiOther , OPeak_values, OPeak_freq = pickle.load(f)
                 
     except IOError:
@@ -120,7 +148,7 @@ for dayofyear in day_range:
 #    
    
 
-    
+
     
 #%% Used to make figure 3
     
@@ -157,46 +185,50 @@ for dayofyear in day_range:
 #    axs[4].yaxis.set_major_locator(ticker.MultipleLocator(20))
 #    axs[4].set_xlabel('Frequency [Hz]',**axis_font)
 #    axs[4].set_xlim(xmin=Freqmin,xmax=Freqmax)
-#    dayofyear=dayofyear+1
+#    doy=doy+1
 #    
 
-#------------------------------------------------------------------------------
-#Used to find the frequencies that contain glaciohydraulic tremor
+# These next 15 lines or so are with respect to the power cut-offs....
+# #------------------------------------------------------------------------------
+# #Used to find the frequencies that contain glaciohydraulic tremor
     
-    freq= freqSV    
-    try: PeakPower_values[0]
-    except IndexError: continue
+#     freq= freqSV    
+#     try: PeakPower_values[0]
+#     except IndexError: continue
 
-#%%   This transforms power to match frequencies of other constraints          
-    # Power was sampled at a finer frequency scale than the other constraints.
-    Index=[]
-    for x in PeakPower_values:
-        Index.append(np.where(np.array(Power_average)==x)[0][0])
+# #%%   This transforms power to match frequencies of other constraints          
+#     # Power was sampled at a finer frequency scale than the other constraints.
+#     Index=[]
+#     for x in PeakPower_values:
+#         Index.append(np.where(np.array(Power_average)==x)[0][0])
     
-    HighPowerGroup=group_consecutives(np.array(Index))
-    PowerFreq=[]
-    for H in np.arange(0,len(HighPowerGroup)):
-        freqsHighPower=np.take(freqsPower_cut, HighPowerGroup[H])
-        Loc=np.where(np.logical_and(np.greater_equal(freq,min(freqsHighPower)),np.less_equal(freq,max(freqsHighPower))))[0]
-        PowerFreq.append(np.take(np.array(freq),Loc))
-    FreqPeak_Power=np.concatenate(PowerFreq).tolist()
+#     HighPowerGroup=group_consecutives(np.array(Index))
+#     PowerFreq=[]
+#     for H in np.arange(0,len(HighPowerGroup)):
+#         freqsHighPower=np.take(freqsPower_cut, HighPowerGroup[H])
+#         Loc=np.where(np.logical_and(np.greater_equal(freq,min(freqsHighPower)),np.less_equal(freq,max(freqsHighPower))))[0]
+#         PowerFreq.append(np.take(np.array(freq),Loc))
+#     FreqPeak_Power=np.concatenate(PowerFreq).tolist()
 
 #%%  defines the wave type of the tremor signal 
     Freq020wave=[];FreqRayleighwave=[];FreqOtherwave=[]
     
     for V in ZPeak_freq:                                                        #Find frequency of body wave glaciohydraulic tremor
-        if V in FreqPeak_Power and V in SVPeak_freq:
+        # if V in FreqPeak_Power and V in SVPeak_freq:
+        if V in SVPeak_freq:
             Freq020wave.append(V)
             
     for V in RPeak_freq:                                                        #Find frequency of Rayligh wave glaciohydraulic tremor
-        if V in FreqPeak_Power and V in SVPeak_freq:
+        # if V in FreqPeak_Power and V in SVPeak_freq:
+        if V in SVPeak_freq:
             FreqRayleighwave.append(V)
             
     for V in OPeak_freq:                                                        # Find frequency of mixed wave glaciohydraulic tremor
-        if V in FreqPeak_Power and V in SVPeak_freq:
+        # if V in FreqPeak_Power and V in SVPeak_freq:
+        if V in SVPeak_freq:
             FreqOtherwave.append(V)
     
-    # Creates array of dayofyear for plotting purposes
+    # Creates array of doy for plotting purposes
     Day_array_020=[UTCDay]*len(Freq020wave)
     Day_array_Rayleigh=[UTCDay]*len(FreqRayleighwave)
     Day_array_other=[UTCDay]*len(FreqOtherwave)   
@@ -208,22 +240,29 @@ for dayofyear in day_range:
 
 #%% Save frequencies of different wave type of glaciohydraulic tremor    
 
-#    if len(Freq020wave)!= 0:
-#        with open('E:/Research/Results/%s/freqs_by_WT/020/freq020_%s.pickle'%(Station,dayofyear), 'wb') as f:  # Python 3: open(..., 'wb')
-#            pickle.dump([Freq020wave], f)
+    if not Path.exists(analysis_path / 'Results' / Station):
+        Path.mkdir(analysis_path / 'Results' / Station)
+        Path.mkdir(analysis_path / 'Results' / Station / 'freqs_by_WT')
+        Path.mkdir(analysis_path / 'Results' / Station / 'freqs_by_WT' / 'Rayleigh')
+        Path.mkdir(analysis_path / 'Results' / Station / 'freqs_by_WT' / '020')
+        Path.mkdir(analysis_path / 'Results' / Station / 'freqs_by_WT' / 'Other')
 
-#    if len(FreqRayleighwave)!=0:
-#        with open('E:/Research/Results/%s/freqs_by_WT/Rayleigh/freqRayleigh_%s.pickle'%(Station,dayofyear), 'wb') as f:  # Python 3: open(..., 'wb')
-#            pickle.dump([FreqRayleighwave], f)
+    if len(Freq020wave)!= 0:
+        with open( str(analysis_path) + '/Results/%s/freqs_by_WT/020/freq020_%s.pickle'%(Station,doy), 'wb') as f:  # Python 3: open(..., 'wb')
+            pickle.dump([Freq020wave], f)
 
-#    if len(FreqOtherwave)!= 0:
-#        with open('E:/Research/Results/%s/freqs_by_WT/Other/freqOther_%s.pickle'%(Station,dayofyear), 'wb') as f:  # Python 3: open(..., 'wb')
-#            pickle.dump([FreqOtherwave], f)
+    if len(FreqRayleighwave)!=0:
+        with open(str(analysis_path) + '/Results/%s/freqs_by_WT/Rayleigh/freqRayleigh_%s.pickle'%(Station,doy), 'wb') as f:  # Python 3: open(..., 'wb')
+            pickle.dump([FreqRayleighwave], f)
+
+    if len(FreqOtherwave)!= 0:
+        with open(str(analysis_path) + '/Results/%s/freqs_by_WT/Other/freqOther_%s.pickle'%(Station,doy), 'wb') as f:  # Python 3: open(..., 'wb')
+            pickle.dump([FreqOtherwave], f)
         
     
 #%% Create a scatter plot of frequencies of glaciohydraulic tremor
     
-    if dayofyear != max(day_range):
+    if day != max(dates):
         ax.scatter(Day020_datenum,Freq020wave,color='r',s=15)        
         ax.scatter(DayOther_datenum,FreqOtherwave,color='g',s=15,)
         ax.scatter(DayRayleigh_datenum,FreqRayleighwave,color='b',s=15)
@@ -231,30 +270,15 @@ for dayofyear in day_range:
         ax.scatter(Day020_datenum,Freq020wave,color='r',label='P,S,Love',s=15)        
         ax.scatter(DayOther_datenum,FreqOtherwave,color='g',label='Other',s=15,)
         ax.scatter(DayRayleigh_datenum,FreqRayleighwave,color='b',label='Rayleigh',s=15)
+        plt.legend()
     
     
 ax.xaxis.set_major_locator(mdates.AutoDateLocator())
 ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 fig.autofmt_xdate()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+print(str( analysis_path / 'Results') + '/%s_Wavetypes'%(Station))
+plt.savefig(str( analysis_path / 'Results') + '/%s_Wavetypes'%(Station))
+plt.close()
 
 

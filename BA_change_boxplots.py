@@ -13,7 +13,10 @@ import matplotlib.pyplot as plt
 from numpy.linalg import svd
 import cmath
 import pickle
-
+from pathlib import Path
+import configparser
+import datetime as dt
+from scipy import stats
 
 #%% trendline function 
 def trendline(xd, yd, order=1, c='r', alpha=1, Rval=False):
@@ -52,24 +55,57 @@ def trendline(xd, yd, order=1, c='r', alpha=1, Rval=False):
         #Return the R^2 value:
         return Rsqr
 
+
+#%% User defined Variables
+analysis_path = Path.cwd()
+
+#%% READ FROM THE PAR FILE
+config = configparser.ConfigParser()
+config.read('polarization.par')
+
+Station = config['DEFAULT']['station']
+network = config['DEFAULT']['network']
+
+year = int(config['DEFAULT']['year'])
+start_month = int(config['DEFAULT']['start_month'])
+end_month = int(config['DEFAULT']['end_month'])
+start_day = int(config['DEFAULT']['start_day'])
+end_day = int(config['DEFAULT']['end_day'])
+
+# Freqmin = float(config['DEFAULT']['PolarFreqmin']) # Minimum frequancy of interest {Hz}
+# Freqmax = float(config['DEFAULT']['PolarFreqmax']) # Max frequency of interest [Hz]
+averaging_number = int(config['DEFAULT']['averaging_number']) # number of spectral covariance matricies that are averaged together
+
+start_day = dt.datetime(year, start_month, start_day, 0,0,0)
+end_day = dt.datetime(year, end_month, end_day, 0,0,0)
+
+dates = np.arange(start_day, end_day, dt.timedelta(days=1))
+
+
 #%% User defined variables 
-Station='ETIP'                      # Seismic Station Name
-year=2016                           # year of seismic data collection 
-day_range=np.arange(141,200,1)      # day of year range of interest 
-Freqmin=4.0                         # Minimum Frequency of GHT band [Hz]
-Freqmax=4.5                         # Maximum frequency of GHT band [Hz]
-averaging_number=13                 # number of SCM that are averaged together
+# Station='ETIP'                      # Seismic Station Name
+# year=2016                           # year of seismic data collection 
+Freqmin=1.7                         # Minimum Frequency of GHT band [Hz]
+Freqmax=3.3                         # Maximum frequency of GHT band [Hz]
+# averaging_number=13                 # number of SCM that are averaged together
     
 #%% 
 # Initiate arrays 
 boxplot_data=[]; label_doy=[];median_value=[]
 upper_quartile=[]; lower_quartile=[]; doy_stats=[]
 
+
+#%% Load Data Needed (found from GHT_Frequencies.py and FFT_loop.py)
+
+Sin0=[];Sin1=[];Sin2=[];SinTot=[]   
+
 #Loops through all days of year in day range      
-for dayofyear in day_range:
-    
+for day in dates:
+    temp = (day - np.datetime64(str(year-1) + '-12-31')).astype('timedelta64[D]')                                            # defines the day of year
+    doy = int( temp / np.timedelta64(1, 'D') )    
+
     #where frequencies of Rayleigh wave tremor data is stored 
-    A='D:/Research/Results/%s/freqs_by_WT/Rayleigh/freqRayleigh_%s.pickle'%(Station,dayofyear)
+    A= str( analysis_path / 'Results' / Station / 'freqs_by_WT'/'Rayleigh' ) + '/freqRayleigh_%s.pickle'%(doy)
 
     try:
         #load Rayleigh wave glaciohydraulic tremor frequencies
@@ -77,14 +113,14 @@ for dayofyear in day_range:
             GHT_freq_Rayleigh= pickle.load(f)
         GHT_freq_Rayleigh=GHT_freq_Rayleigh[0]
         
-        #open FFT results
-        with open('D:/FFT_results/%s/FFT.%s.pickle'%(Station,dayofyear),'rb') as f:  # Python 3: open(..., 'rb')
+        # Load fft results for day of year (as found by FFT_loop.py)
+        with open(str( analysis_path / 'FFT_results' / Station ) + '/FFT.%s.pickle'%(doy),'rb') as f:  # Python 3: open(..., 'rb')
             FFT_stack_real,FFT_stack_imag,WindowLoop,Frequency,averaging_number= pickle.load(f)    
     
     #If a given day of data doesn't exist record a zero in boxplot_data array
     except IOError:
         boxplot_data.append([0])
-        label_doy.append(dayofyear)
+        label_doy.append(doy)
         continue    
     
     # determine if there are any frequencies that are GHT Rayleigh waves within the frequency range for given day
@@ -93,7 +129,7 @@ for dayofyear in day_range:
    # if there are no GHT Rayleigh waves within the frequency range, record a zero in boxplot_data and continue loop
     if len(GHT_Freq_Range)==0:
         boxplot_data.append([0])
-        label_doy.append(dayofyear)
+        label_doy.append(doy)
         continue
     
     # Find the index values from FFT frequencies that coinside with the frequency range of tremor for a given day
@@ -155,8 +191,6 @@ for dayofyear in day_range:
             
             # Get transpose of V
             V=np.conj(V.T)
-            
-
         
             # polarization vector defined along with each component 
             Z=V[:,0]
@@ -193,62 +227,77 @@ for dayofyear in day_range:
             K=K+1
         
 #%% Finding Statistics of backazimuth results  
-    
+    mean_az = stats.circmean(Azimuth, high=360, low=0)
+    delta_az = (mean_az-180)%360
+    Az_off = (Azimuth - delta_az)%360 # azimuth offset
+
     #median of backazimuths 
-    median_value.append(np.median(Azimuth))
+    median_value.append( (np.median(Az_off) + delta_az)%360 )
     
     #75th percentile of backazimuths
-    upper_quartile.append( np.percentile(Azimuth, 75))
+    upper_quartile.append( (np.percentile(Az_off, 75) + delta_az)%360 )
     
     #25 percentile of backazimuths
-    lower_quartile.append( np.percentile(Azimuth, 25))
+    lower_quartile.append( (np.percentile(Az_off, 25) + delta_az)%360 )
     
     #day of year
-    doy_stats.append(dayofyear)
+    doy_stats.append(doy)
     
     # Backazimuth array
-    boxplot_data.append(Azimuth)
+    boxplot_data.append(Az_off)
     
     # poitions for labels 
-    label_doy.append(dayofyear)
+    label_doy.append(doy)
     
 # Save data 
-with open('D:/Research/TimeSeries/%s_%s_%s.pickle'%(Station,Freqmin,Freqmax), 'wb') as f:  # Python 3: open(..., 'wb')
+with open(str( analysis_path / 'TimeSeries') + '/%s_%s_%s.pickle'%(Station,Freqmin,Freqmax), 'wb') as f:  # Python 3: open(..., 'wb')
         pickle.dump([median_value,upper_quartile, lower_quartile,boxplot_data,label_doy,doy_stats], f)
 
 #%% Used to make boxplots of data (done originally for figure 6)
-with open('D:/Research/TimeSeries/%s_%s_%s.pickle'%(Station,Freqmin,Freqmax), 'rb') as f:  # Python 3: open(..., 'wb')
-        median_value,upper_quartile, lower_quartile,boxplot_data,label_doy,doy_stats=pickle.load(f)
+# with open(str( analysis_path / 'TimeSeries') + '/BBEU_1.7_3.3.pickle', 'rb') as f:  # Python 3: open(..., 'wb')
+#         median_value,upper_quartile, lower_quartile,boxplot_data,label_doy,doy_stats=pickle.load(f)
      
 bp_dict =plt.boxplot(boxplot_data,positions=label_doy,showfliers=False)
 plt.xlabel('DOY')
 plt.ylabel('Backazimuth [degrees]') 
-plt.ylim(205,265)
-plt.xlim(xmax=195)
+# plt.ylim(205,265)
+# plt.xlim(xmax=195)
 plt.title('Temporal Changes in Backazimuth Measurements:%s to %s'%(Freqmin,Freqmax))      
-
+plt.savefig(str( analysis_path / 'Results') + '/Boxplots_'+Station)
 ## Place Trendline through the median backazimuth for analysis purposes    
 #slope,intercept,Rsqr=trendline(doy_stats,median_value) 
 #plt.ylim(50,270)  
-     
-#%% Used to make figure 6 in paper
 
-# Open different frequency data sets 
-with open('D:/Research/TimeSeries/ETIP_3.3_4.0.pickle', 'rb') as f:  # Python 3: open(..., 'wb')
-        median_value1,upper_quartile1, lower_quartile1,boxplot_data1,label_doy1,doy_stats1=pickle.load(f)
-with open('D:/Research/TimeSeries/ETIP_4.0_4.5.pickle', 'rb') as f:  # Python 3: open(..., 'wb')
-        median_value2,upper_quartile2, lower_quartile2,boxplot_data2,label_doy2,doy_stats2=pickle.load(f)
-
+#%%
 fig,ax=plt.subplots()
-ax.fill_between(doy_stats1,upper_quartile1,lower_quartile1,color='purple',alpha=0.2)
-ax.errorbar(doy_stats1,median_value1, yerr=[np.array(median_value1)-np.array(lower_quartile1),np.array(upper_quartile1)-np.array(median_value1)],fmt='o',color='purple',label='3.3-4.0 Hz')
-
-ax.fill_between(np.array(doy_stats2)+.35,upper_quartile2,lower_quartile2,color='red',alpha=0.2)
-ax.errorbar(np.array(doy_stats2)+.35,median_value2, yerr=[ np.array(median_value2)-np.array(lower_quartile2),np.array(upper_quartile2)-np.array(median_value2)],fmt='o',color='r',label='4.0-4.5 Hz')
-
+ax.fill_between(dates,upper_quartile,lower_quartile,color='purple',alpha=0.2)
+ax.errorbar(dates,median_value, yerr=[np.array(median_value)-np.array(lower_quartile),np.array(upper_quartile)-np.array(median_value)],fmt='o',color='purple',label='3.3-4.0 Hz')
+# ax.fill_between(np.array(doy_stats2)+.35,upper_quartile2,lower_quartile2,color='red',alpha=0.2)
+# ax.errorbar(np.array(doy_stats2)+.35,median_value2, yerr=[ np.array(median_value2)-np.array(lower_quartile2),np.array(upper_quartile2)-np.array(median_value2)],fmt='o',color='r',label='4.0-4.5 Hz')
 ax.set_ylabel('Backazimuth [degree]')
 ax.legend(loc=2,fontsize='medium')
-ax.set_title('ETIP')
+ax.set_title(Station)
+plt.savefig(str( analysis_path / 'Results') + '/Errorbars_'+Station)
+
+
+#%% Used to make figure 6 in paper
+
+# # Open different frequency data sets 
+# with open('D:/Research/TimeSeries/ETIP_3.3_4.0.pickle', 'rb') as f:  # Python 3: open(..., 'wb')
+#         median_value1,upper_quartile1, lower_quartile1,boxplot_data1,label_doy1,doy_stats1=pickle.load(f)
+# with open('D:/Research/TimeSeries/ETIP_4.0_4.5.pickle', 'rb') as f:  # Python 3: open(..., 'wb')
+#         median_value2,upper_quartile2, lower_quartile2,boxplot_data2,label_doy2,doy_stats2=pickle.load(f)
+
+# fig,ax=plt.subplots()
+# ax.fill_between(doy_stats1,upper_quartile1,lower_quartile1,color='purple',alpha=0.2)
+# ax.errorbar(doy_stats1,median_value1, yerr=[np.array(median_value1)-np.array(lower_quartile1),np.array(upper_quartile1)-np.array(median_value1)],fmt='o',color='purple',label='3.3-4.0 Hz')
+
+# ax.fill_between(np.array(doy_stats2)+.35,upper_quartile2,lower_quartile2,color='red',alpha=0.2)
+# ax.errorbar(np.array(doy_stats2)+.35,median_value2, yerr=[ np.array(median_value2)-np.array(lower_quartile2),np.array(upper_quartile2)-np.array(median_value2)],fmt='o',color='r',label='4.0-4.5 Hz')
+
+# ax.set_ylabel('Backazimuth [degree]')
+# ax.legend(loc=2,fontsize='medium')
+# ax.set_title('ETIP')
 
         
 
