@@ -1,0 +1,10 @@
+Results/
+TimeSeries/
+Constraints/
+FFT_results/
+nohup.out
+polarization.par~
+__pycache__/
+.DS_Store
+._*
+pysc/
